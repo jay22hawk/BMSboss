@@ -1,0 +1,577 @@
+// BMS Boss — Multi-Tenant Database Schema (v2.0)
+// Hierarchy: Client → Customers → Locations → Submissions
+// Features: Permission-based RBAC, Audit Log, Support Diagnostics, Impersonation
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTH, ROLES & PERMISSIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum UserRole {
+  PLATFORM_ADMIN       // Full platform access, manages clients
+  PLATFORM_SUPPORT     // Cross-tenant read access for diagnostics, no billing
+  CLIENT_ADMIN         // Full access within their client tenant
+  CLIENT_USER          // Create/edit submissions within their client
+  CLIENT_VIEWER        // Read-only access within their client
+  CLIENT_BILLING       // View invoices & payment within their client, no submission data
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  passwordHash  String    @map("password_hash")
+  role          UserRole  @default(CLIENT_USER)
+  clientId      String?   @map("client_id")
+  client        Client?   @relation(fields: [clientId], references: [id])
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  lastLoginAt   DateTime? @map("last_login_at")
+  isActive      Boolean   @default(true) @map("is_active")
+
+  // Optional: override default role permissions for this user
+  permissionOverrides UserPermissionOverride[]
+
+  // Relations
+  submissionsCreated      Submission[]         @relation("CreatedBy")
+  auditLogsPerformed      AuditLog[]           @relation("AuditPerformedBy")
+  impersonationSessions   ImpersonationSession[] @relation("Impersonator")
+  impersonatedSessions    ImpersonationSession[] @relation("Impersonated")
+  supportNotes            SupportNote[]        @relation("SupportNoteAuthor")
+
+  @@map("users")
+}
+
+// ─── Granular Permissions ────────────────────────────────────────────────────
+// Each role maps to a default set of permissions. Overrides allow per-user tweaks
+// without creating new roles.
+
+enum Permission {
+  // Submission lifecycle
+  SUBMISSION_CREATE
+  SUBMISSION_READ
+  SUBMISSION_EDIT
+  SUBMISSION_DELETE
+  SUBMISSION_GENERATE_EXCEL
+  SUBMISSION_DOWNLOAD
+
+  // Bill upload & extraction
+  BILL_UPLOAD
+  BILL_RERUN_EXTRACTION
+
+  // Customer / Location management
+  CUSTOMER_CREATE
+  CUSTOMER_READ
+  CUSTOMER_EDIT
+  CUSTOMER_DELETE
+  LOCATION_CREATE
+  LOCATION_READ
+  LOCATION_EDIT
+  LOCATION_DELETE
+
+  // Client management (platform-level)
+  CLIENT_CREATE
+  CLIENT_READ
+  CLIENT_EDIT
+  CLIENT_DEACTIVATE
+
+  // User management
+  USER_INVITE
+  USER_READ
+  USER_EDIT
+  USER_DEACTIVATE
+
+  // Billing & payments
+  BILLING_VIEW
+  BILLING_MANAGE
+
+  // Support & diagnostics (platform-level)
+  SUPPORT_VIEW_ANY_TENANT
+  SUPPORT_VIEW_EXTRACTION_DIAGNOSTICS
+  SUPPORT_IMPERSONATE
+  SUPPORT_RERUN_EXTRACTION
+  SUPPORT_ADD_NOTES
+
+  // Audit
+  AUDIT_LOG_VIEW
+  AUDIT_LOG_VIEW_ALL     // Cross-tenant audit access
+}
+
+/// Maps each role to its default permissions.
+/// Stored as a lookup table so roles can be reconfigured without code deploys.
+model RolePermission {
+  id         String     @id @default(cuid())
+  role       UserRole
+  permission Permission
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  @@unique([role, permission])
+  @@map("role_permissions")
+}
+
+/// Per-user permission overrides (grant or revoke beyond the role default).
+model UserPermissionOverride {
+  id         String     @id @default(cuid())
+  userId     String     @map("user_id")
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission Permission
+  granted    Boolean    @default(true)  // true = grant, false = revoke
+  grantedBy  String?    @map("granted_by")  // userId of admin who set it
+  reason     String?                        // Why was this override added
+  createdAt  DateTime   @default(now()) @map("created_at")
+
+  @@unique([userId, permission])
+  @@map("user_permission_overrides")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CLIENT & CUSTOMER HIERARCHY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+model Client {
+  id            String     @id @default(cuid())
+  companyName   String     @map("company_name")
+  contactName   String?    @map("contact_name")
+  contactEmail  String?    @map("contact_email")
+  contactPhone  String?    @map("contact_phone")
+  address       String?
+  city          String?
+  state         String?
+  zip           String?
+  isActive      Boolean    @default(true) @map("is_active")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  users         User[]
+  customers     Customer[]
+  auditLogs     AuditLog[]
+  supportNotes  SupportNote[]  @relation("ClientSupportNotes")
+
+  @@map("clients")
+}
+
+model Customer {
+  id            String     @id @default(cuid())
+  clientId      String     @map("client_id")
+  client        Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name          String
+  contactName   String?    @map("contact_name")
+  contactEmail  String?    @map("contact_email")
+  contactPhone  String?    @map("contact_phone")
+  notes         String?
+  isActive      Boolean    @default(true) @map("is_active")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  locations     Location[]
+
+  @@index([clientId])
+  @@map("customers")
+}
+
+model Location {
+  id            String     @id @default(cuid())
+  customerId    String     @map("customer_id")
+  customer      Customer   @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  name          String                   // e.g., "Murdock Middle High School"
+  address       String?
+  city          String?
+  state         String?
+  zip           String?
+
+  // Building profile (reusable across submissions)
+  buildingActivity  String?  @map("building_activity")
+  heatingFuel       String?  @map("heating_fuel")
+  totalBuildingSqft Float?   @map("total_building_sqft")
+  annualElectricKwh Float?   @map("annual_electric_kwh")
+  annualFuelUsage   Float?   @map("annual_fuel_usage")
+
+  // Utility accounts
+  electricAccount   String?  @map("electric_account")
+  gasAccount        String?  @map("gas_account")
+  electricPa        String?  @map("electric_pa")
+  gasPa             String?  @map("gas_pa")
+
+  isActive      Boolean    @default(true) @map("is_active")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+
+  // Relations
+  submissions   Submission[]
+
+  @@index([customerId])
+  @@map("locations")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUBMISSIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum SubmissionStatus {
+  DRAFT
+  EXTRACTION_COMPLETE
+  FORM_COMPLETE
+  EXCEL_GENERATED
+  SUBMITTED_PRE_APPROVAL
+  PRE_APPROVED
+  SUBMITTED_POST_INSTALL
+  COMPLETED
+  REJECTED
+}
+
+enum SubmissionStage {
+  PRE_APPROVAL
+  POST_INSTALLATION
+}
+
+model Submission {
+  id              String           @id @default(cuid())
+  locationId      String           @map("location_id")
+  location        Location         @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  createdById     String           @map("created_by_id")
+  createdBy       User             @relation("CreatedBy", fields: [createdById], references: [id])
+
+  // Identification
+  name            String                  // User-defined name, e.g., "2026 BMS Upgrade"
+  status          SubmissionStatus @default(DRAFT)
+  stage           SubmissionStage  @default(PRE_APPROVAL)
+
+  // Bill extraction data (JSON blob from ExtractedBillData)
+  extractedBillData Json?          @map("extracted_bill_data")
+  extractionConfidence Float?      @map("extraction_confidence")
+  billPdfPath     String?          @map("bill_pdf_path")
+
+  // Calculator input (JSON blob from BMSCalculatorInput)
+  calculatorInput Json?            @map("calculator_input")
+
+  // Generated output
+  excelFilePath   String?          @map("excel_file_path")
+  incentiveEstimate Float?         @map("incentive_estimate")
+
+  // Project details (denormalized for quick access)
+  projectType     String?          @map("project_type")
+  totalProjectCost Float?          @map("total_project_cost")
+  bmsManufacturer String?          @map("bms_manufacturer")
+
+  // MAP submission tracking
+  applicationNumber String?        @map("application_number")
+  mapSubmittedAt  DateTime?        @map("map_submitted_at")
+  mapResponseAt   DateTime?        @map("map_response_at")
+
+  // Timestamps
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  completedAt     DateTime?        @map("completed_at")
+
+  // Relations
+  affectedAreas        AffectedArea[]
+  billUploads          BillUpload[]
+  healthCheckResults   SubmissionHealthCheck[]
+  supportNotes         SupportNote[]  @relation("SubmissionSupportNotes")
+
+  @@index([locationId])
+  @@index([createdById])
+  @@index([status])
+  @@map("submissions")
+}
+
+model AffectedArea {
+  id              String     @id @default(cuid())
+  submissionId    String     @map("submission_id")
+  submission      Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  areaNumber      Int        @map("area_number")
+
+  // Area details
+  description     String?
+  affectedSqft    Float?     @map("affected_sqft")
+  isNewEquipment  String?    @map("is_new_equipment")
+
+  // HVAC equipment
+  ventilationType   String?  @map("ventilation_type")
+  primaryHeating    String?  @map("primary_heating")
+  primaryCooling    String?  @map("primary_cooling")
+  terminalUnits     String?  @map("terminal_units")
+
+  // Sequences of operation (stored as individual booleans for query flexibility)
+  seqSystemSchedules        Boolean @default(false) @map("seq_system_schedules")
+  seqOptimalStartStop       Boolean @default(false) @map("seq_optimal_start_stop")
+  seqResetChilledWater      Boolean @default(false) @map("seq_reset_chilled_water")
+  seqResetStaticPressure    Boolean @default(false) @map("seq_reset_static_pressure")
+  seqResetBoilerWater       Boolean @default(false) @map("seq_reset_boiler_water")
+  seqDemandControlVentilation Boolean @default(false) @map("seq_demand_control_ventilation")
+  seqEconomizerControl      Boolean @default(false) @map("seq_economizer_control")
+  seqResetSupplyAirTemp     Boolean @default(false) @map("seq_reset_supply_air_temp")
+  seqResetCondenserWater    Boolean @default(false) @map("seq_reset_condenser_water")
+
+  @@unique([submissionId, areaNumber])
+  @@map("affected_areas")
+}
+
+model BillUpload {
+  id              String     @id @default(cuid())
+  submissionId    String     @map("submission_id")
+  submission      Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  // File info
+  originalFilename String   @map("original_filename")
+  storedPath      String     @map("stored_path")
+  fileSize        Int        @map("file_size")
+  mimeType        String     @default("application/pdf") @map("mime_type")
+
+  // Extraction metadata
+  utilitySponsor  String?    @map("utility_sponsor")
+  billType        String?    @map("bill_type")
+  confidence      Float?
+  extractedAt     DateTime?  @map("extracted_at")
+
+  // Raw extraction data for diagnostics (support can inspect what pdfplumber saw)
+  rawExtractedText  String?  @map("raw_extracted_text")   @db.Text
+  parserVersion     String?  @map("parser_version")       // e.g., "national_grid_v1.2"
+  extractionErrors  Json?    @map("extraction_errors")    // Any errors/warnings from parse
+  fieldConfidences  Json?    @map("field_confidences")    // Per-field confidence scores
+
+  createdAt       DateTime   @default(now()) @map("created_at")
+
+  // Relations
+  extractionReruns  ExtractionRerun[]
+
+  @@index([submissionId])
+  @@map("bill_uploads")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUDIT LOG
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum AuditAction {
+  // Auth
+  USER_LOGIN
+  USER_LOGOUT
+  USER_LOGIN_FAILED
+  USER_PASSWORD_CHANGED
+
+  // Submissions
+  SUBMISSION_CREATED
+  SUBMISSION_UPDATED
+  SUBMISSION_FIELD_CHANGED
+  SUBMISSION_STATUS_CHANGED
+  SUBMISSION_DELETED
+
+  // Bill / Extraction
+  BILL_UPLOADED
+  EXTRACTION_COMPLETED
+  EXTRACTION_RERUN
+  EXCEL_GENERATED
+  EXCEL_DOWNLOADED
+
+  // Customer / Location
+  CUSTOMER_CREATED
+  CUSTOMER_UPDATED
+  LOCATION_CREATED
+  LOCATION_UPDATED
+
+  // User management
+  USER_INVITED
+  USER_ROLE_CHANGED
+  USER_DEACTIVATED
+  USER_PERMISSION_OVERRIDE_SET
+
+  // Support
+  IMPERSONATION_STARTED
+  IMPERSONATION_ENDED
+  SUPPORT_NOTE_ADDED
+  HEALTH_CHECK_RUN
+
+  // Billing
+  PAYMENT_COMPLETED
+  PAYMENT_FAILED
+}
+
+model AuditLog {
+  id              String      @id @default(cuid())
+  performedById   String      @map("performed_by_id")
+  performedBy     User        @relation("AuditPerformedBy", fields: [performedById], references: [id])
+  action          AuditAction
+  clientId        String?     @map("client_id")
+  client          Client?     @relation(fields: [clientId], references: [id])
+
+  // What was affected
+  targetType      String?     @map("target_type")    // e.g., "Submission", "User", "Location"
+  targetId        String?     @map("target_id")      // ID of the affected record
+
+  // Change details
+  previousValue   Json?       @map("previous_value") // Snapshot of old state (for field changes)
+  newValue        Json?       @map("new_value")       // Snapshot of new state
+  metadata        Json?                               // Additional context (IP, user agent, etc.)
+
+  // Impersonation context
+  impersonationSessionId String? @map("impersonation_session_id")
+
+  // Timestamp
+  createdAt       DateTime    @default(now()) @map("created_at")
+
+  @@index([performedById])
+  @@index([clientId])
+  @@index([targetType, targetId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUPPORT & DIAGNOSTICS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Impersonation Sessions ──────────────────────────────────────────────────
+// Tracks when a PLATFORM_SUPPORT or PLATFORM_ADMIN user views the platform
+// as a specific client user. Every action during impersonation is tagged
+// with the session ID in the audit log.
+
+model ImpersonationSession {
+  id                String    @id @default(cuid())
+  impersonatorId    String    @map("impersonator_id")
+  impersonator      User      @relation("Impersonator", fields: [impersonatorId], references: [id])
+  impersonatedId    String    @map("impersonated_id")
+  impersonated      User      @relation("Impersonated", fields: [impersonatedId], references: [id])
+  reason            String                              // Required: why is this needed
+  startedAt         DateTime  @default(now()) @map("started_at")
+  endedAt           DateTime? @map("ended_at")
+  isActive          Boolean   @default(true) @map("is_active")
+
+  @@index([impersonatorId])
+  @@index([impersonatedId])
+  @@index([isActive])
+  @@map("impersonation_sessions")
+}
+
+// ─── Extraction Re-runs ──────────────────────────────────────────────────────
+// When the parser is updated, support can re-run extraction on existing bills.
+// Each re-run preserves the old result and records what changed.
+
+model ExtractionRerun {
+  id              String     @id @default(cuid())
+  billUploadId    String     @map("bill_upload_id")
+  billUpload      BillUpload @relation(fields: [billUploadId], references: [id], onDelete: Cascade)
+  triggeredById   String     @map("triggered_by_id")   // User who initiated re-run
+  parserVersion   String     @map("parser_version")     // Parser version used
+
+  // Results comparison
+  previousData    Json       @map("previous_data")      // Old ExtractedBillData
+  newData         Json       @map("new_data")            // New ExtractedBillData
+  previousConfidence Float   @map("previous_confidence")
+  newConfidence   Float      @map("new_confidence")
+  fieldsChanged   Json?      @map("fields_changed")     // List of field names that differ
+  accepted        Boolean?                               // null = pending review, true/false
+
+  createdAt       DateTime   @default(now()) @map("created_at")
+  reviewedAt      DateTime?  @map("reviewed_at")
+
+  @@index([billUploadId])
+  @@map("extraction_reruns")
+}
+
+// ─── Submission Health Checks ────────────────────────────────────────────────
+// Automated validation flags that catch potential issues before MAP submission.
+// Can be triggered on status change or manually by support.
+
+enum HealthCheckSeverity {
+  INFO
+  WARNING
+  ERROR
+  BLOCKER     // Prevents submission until resolved
+}
+
+enum HealthCheckStatus {
+  OPEN
+  ACKNOWLEDGED    // Client saw it, chose to proceed
+  RESOLVED        // Underlying issue was fixed
+  DISMISSED       // Support dismissed as non-issue
+}
+
+model SubmissionHealthCheck {
+  id              String               @id @default(cuid())
+  submissionId    String               @map("submission_id")
+  submission      Submission           @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  checkCode       String               @map("check_code")      // e.g., "SQFT_EXCEEDS_LIMIT"
+  severity        HealthCheckSeverity
+  status          HealthCheckStatus    @default(OPEN)
+  title           String                                        // Short description
+  detail          String?              @db.Text                 // Full explanation
+  fieldPath       String?              @map("field_path")       // e.g., "total_building_sqft"
+  currentValue    String?              @map("current_value")    // What we found
+  expectedRange   String?              @map("expected_range")   // What was expected
+
+  // Resolution tracking
+  resolvedById    String?              @map("resolved_by_id")
+  resolvedAt      DateTime?            @map("resolved_at")
+  resolutionNote  String?              @map("resolution_note")
+
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  @@index([submissionId])
+  @@index([severity])
+  @@index([status])
+  @@index([checkCode])
+  @@map("submission_health_checks")
+}
+
+// ─── Support Notes ───────────────────────────────────────────────────────────
+// Internal notes that support staff can attach to clients or submissions.
+// Not visible to client users.
+
+model SupportNote {
+  id              String      @id @default(cuid())
+  authorId        String      @map("author_id")
+  author          User        @relation("SupportNoteAuthor", fields: [authorId], references: [id])
+
+  // Attach to client, submission, or both
+  clientId        String?     @map("client_id")
+  client          Client?     @relation("ClientSupportNotes", fields: [clientId], references: [id])
+  submissionId    String?     @map("submission_id")
+  submission      Submission? @relation("SubmissionSupportNotes", fields: [submissionId], references: [id])
+
+  content         String      @db.Text
+  isPinned        Boolean     @default(false) @map("is_pinned")  // Pin important notes to top
+
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+
+  @@index([clientId])
+  @@index([submissionId])
+  @@map("support_notes")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PRICING & BILLING
+// ═══════════════════════════════════════════════════════════════════════════════
+
+enum PricingTier {
+  TIER_1   // $49  — incentive < $10k
+  TIER_2   // $99  — incentive $10k-$50k
+  TIER_3   // $199 — incentive $50k-$100k
+  TIER_4   // $299 — incentive > $100k
+}
+
+model SubmissionCharge {
+  id              String       @id @default(cuid())
+  submissionId    String       @unique @map("submission_id")
+  tier            PricingTier
+  amount          Float
+  incentiveEstimate Float      @map("incentive_estimate")
+  paidAt          DateTime?    @map("paid_at")
+  stripePaymentId String?      @map("stripe_payment_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+
+  @@map("submission_charges")
+}
