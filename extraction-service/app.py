@@ -419,6 +419,10 @@ def _dict_to_calculator_input(data: dict) -> BMSCalculatorInput:
 
 
 def main():
+    # Initialize database on startup
+    from database import init_db
+    init_db()
+
     server = HTTPServer((HOST, PORT), BMSBossHandler)
     tmpl_info = get_template_info()
     tmpl_status = f"Loaded: {tmpl_info['filename']}" if tmpl_info['has_template'] else "NOT FOUND"
