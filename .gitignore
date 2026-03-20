@@ -19,7 +19,11 @@ out/
 
 # ─── Generated outputs (don't commit test xlsx files) ────────────────────────
 extraction-service/outputs/
+extraction-service/uploads/
 *.xlsx
+# But DO include the bundled BMS Calculator template
+!extraction-service/templates/*.xlsx
+!extraction-service/templates/archive/
 
 # ─── Environment & secrets ───────────────────────────────────────────────────
 .env

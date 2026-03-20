@@ -8,14 +8,15 @@ import pdfplumber
 from typing import Optional
 from pathlib import Path
 from models import ExtractedBillData, ExtractionResponse
-from parsers import NationalGridParser
+from parsers import NationalGridParser, EversourceParser
 from parsers.base import BillParser
 
 
 # Registry of available parsers
 PARSERS: list[BillParser] = [
     NationalGridParser(),
-    # Future: EversourceParser(), LibertyParser(), etc.
+    EversourceParser(),
+    # Future: LibertyParser(), UnitilParser(), etc.
 ]
 
 

@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BMS Boss — Mass Save BMS Calculator</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --success: #16a34a;
+      --warning: #d97706;
+      --error: #dc2626;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --border: #e2e8f0;
+      --text: #1e293b;
+      --text-muted: #64748b;
+      --input-fill: #fff7ed;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: white;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+    .header h1 { font-size: 1.5rem; font-weight: 700; }
+    .header .subtitle { font-size: 0.85rem; opacity: 0.85; }
+    .header .status { font-size: 0.8rem; display: flex; align-items: center; gap: 0.5rem; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; }
+    .status-dot.offline { background: var(--error); }
+
+    /* Wizard Steps */
+    .wizard-nav {
+      display: flex;
+      background: white;
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      overflow-x: auto;
+    }
+    .wizard-nav button {
+      padding: 0.75rem 1.5rem;
+      border: none;
+      background: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      border-bottom: 3px solid transparent;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+    .wizard-nav button.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      font-weight: 600;
+    }
+    .wizard-nav button.completed { color: var(--success); }
+    .wizard-nav button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Main Content */
+    .main { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .card h2 { font-size: 1.2rem; margin-bottom: 1rem; color: var(--primary-dark); }
+    .card h3 { font-size: 1rem; margin: 1.25rem 0 0.5rem; color: var(--text); }
+
+    /* Forms */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    .form-grid.three-col { grid-template-columns: 1fr 1fr 1fr; }
+    .form-group { display: flex; flex-direction: column; }
+    .form-group.full-width { grid-column: 1 / -1; }
+    .form-group label {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 0.25rem;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    .form-group input, .form-group select, .form-group textarea {
+      padding: 0.5rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 0.95rem;
+      background: var(--input-fill);
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus, .form-group select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+    }
+    .form-group .auto-filled {
+      background: #ecfdf5;
+      border-color: #86efac;
+    }
+
+    /* Upload Zone */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 3rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #fafbff;
+    }
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--primary);
+      background: #eff6ff;
+    }
+    .upload-zone .icon { font-size: 3rem; margin-bottom: 0.5rem; }
+    .upload-zone p { color: var(--text-muted); }
+    .upload-zone .browse { color: var(--primary); font-weight: 600; text-decoration: underline; }
+
+    /* Buttons */
+    .btn {
+      padding: 0.6rem 1.5rem;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-dark); }
+    .btn-success { background: var(--success); color: white; }
+    .btn-success:hover { background: #15803d; }
+    .btn-outline { background: white; color: var(--primary); border: 1px solid var(--primary); }
+    .btn-outline:hover { background: #eff6ff; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-row { display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem; }
+
+    /* Data Display */
+    .data-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.5rem 2rem;
+    }
+    .data-item { display: flex; justify-content: space-between; padding: 0.4rem 0; border-bottom: 1px solid #f1f5f9; }
+    .data-item .label { color: var(--text-muted); font-size: 0.85rem; }
+    .data-item .value { font-weight: 600; font-size: 0.9rem; }
+
+    /* Sequences checklist */
+    .sequence-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+    .sequence-item {
+      display: flex; align-items: center; gap: 0.5rem;
+      padding: 0.5rem; background: #f8fafc; border-radius: 6px;
+    }
+    .sequence-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); }
+
+    /* Area Tabs */
+    .area-tabs { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .area-tab {
+      padding: 0.4rem 1rem; border: 1px solid var(--border); border-radius: 6px;
+      background: white; cursor: pointer; font-size: 0.85rem;
+    }
+    .area-tab.active { background: var(--primary); color: white; border-color: var(--primary); }
+
+    /* Progress & Alerts */
+    .progress-bar { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; margin: 1rem 0; }
+    .progress-fill { height: 100%; background: var(--primary); transition: width 0.3s; border-radius: 3px; }
+
+    .alert { padding: 0.75rem 1rem; border-radius: 8px; margin: 1rem 0; font-size: 0.9rem; }
+    .alert-success { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+    .alert-warning { background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }
+    .alert-error { background: #fef2f2; color: #991b1b; border: 1px solid #fecaca; }
+    .alert-info { background: #eff6ff; color: #1e40af; border: 1px solid #bfdbfe; }
+
+    /* Spinner */
+    .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid #e2e8f0; border-top-color: var(--primary); border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Summary card */
+    .summary-highlight {
+      background: linear-gradient(135deg, #eff6ff, #f0fdf4);
+      border: 2px solid var(--primary);
+      border-radius: 12px;
+      padding: 1.5rem;
+      text-align: center;
+      margin: 1.5rem 0;
+    }
+    .summary-highlight .amount { font-size: 2.5rem; font-weight: 800; color: var(--primary); }
+    .summary-highlight .label { color: var(--text-muted); font-size: 0.9rem; }
+
+    /* History table */
+    .history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .history-table th, .history-table td { padding: 0.4rem 0.75rem; text-align: left; border-bottom: 1px solid var(--border); }
+    .history-table th { font-weight: 600; color: var(--text-muted); text-transform: uppercase; font-size: 0.75rem; }
+
+    .hidden { display: none; }
+
+    @media (max-width: 768px) {
+      .form-grid, .data-grid, .sequence-grid { grid-template-columns: 1fr; }
+      .header { flex-direction: column; gap: 0.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>BMS Boss</h1>
+    <div class="subtitle">Mass Save Prescriptive BMS Calculator — Automation Platform</div>
+  </div>
+  <div style="display: flex; align-items: center; gap: 1rem;">
+    <div class="status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Checking...</span>
+    </div>
+    <button onclick="openAdminPanel()" title="Admin Settings"
+      style="background:rgba(255,255,255,0.2); border:none; color:white; padding:0.4rem 0.6rem; border-radius:6px; cursor:pointer; font-size:1.1rem;">
+      &#9881; Admin
+    </button>
+  </div>
+</div>
+
+<!-- Admin Settings Modal -->
+<div id="adminModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+  <div style="background:white; border-radius:12px; padding:2rem; max-width:600px; width:90%; max-height:80vh; overflow-y:auto; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+      <h2 style="margin:0;">Admin Settings</h2>
+      <button onclick="closeAdminPanel()" style="background:none; border:none; font-size:1.5rem; cursor:pointer; color:var(--text-muted);">&times;</button>
+    </div>
+
+    <!-- Template Management -->
+    <div style="margin-bottom:1.5rem;">
+      <h3 style="margin-bottom:0.75rem; color:var(--primary);">BMS Calculator Template</h3>
+      <div id="templateInfo" style="padding:1rem; background:var(--bg); border-radius:8px; margin-bottom:1rem;">
+        <span style="color:var(--text-muted);">Loading template info...</span>
+      </div>
+      <div style="margin-bottom:0.75rem;">
+        <label style="font-weight:600; display:block; margin-bottom:0.5rem;">Upload New Template (.xlsx)</label>
+        <input type="file" id="templateFile" accept=".xlsx" style="font-size:0.9rem;">
+      </div>
+      <button onclick="uploadTemplate()" style="background:var(--primary); color:white; border:none; padding:0.5rem 1.2rem; border-radius:6px; cursor:pointer; font-size:0.9rem;">
+        Update Template
+      </button>
+      <div id="templateUploadResult" class="hidden" style="margin-top:0.75rem;"></div>
+    </div>
+
+    <!-- Supported Parsers -->
+    <div style="margin-bottom:1.5rem;">
+      <h3 style="margin-bottom:0.75rem; color:var(--primary);">Supported Utility Parsers</h3>
+      <div id="parserList" style="padding:1rem; background:var(--bg); border-radius:8px;">
+        <span style="color:var(--text-muted);">Loading...</span>
+      </div>
+    </div>
+
+    <!-- System Info -->
+    <div>
+      <h3 style="margin-bottom:0.75rem; color:var(--primary);">System</h3>
+      <div style="padding:1rem; background:var(--bg); border-radius:8px; font-size:0.85rem; color:var(--text-muted);">
+        BMS Boss v0.2.0 &mdash; Mass Save Prescriptive BMS Calculator Automation
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="wizard-nav" id="wizardNav">
+  <button class="active" data-step="0">1. Upload Bill</button>
+  <button data-step="1" disabled>2. Review Extraction</button>
+  <button data-step="2" disabled>3. Building Info</button>
+  <button data-step="3" disabled>4. Project Details</button>
+  <button data-step="4" disabled>5. Affected Areas</button>
+  <button data-step="5" disabled>6. Review & Generate</button>
+</div>
+
+<div class="main">
+  <!-- Step 0: Upload -->
+  <div id="step-0" class="step-panel">
+    <div class="card">
+      <h2>Upload Utility Bill PDF</h2>
+      <p style="color: var(--text-muted); margin-bottom: 1rem;">Upload a utility energy bill to auto-extract account details, usage data, and demand information.</p>
+
+      <div class="upload-zone" id="uploadZone">
+        <div class="icon">📄</div>
+        <p>Drag & drop your utility bill PDF here</p>
+        <p>or <span class="browse">browse files</span></p>
+        <p style="font-size: 0.8rem; margin-top: 0.5rem;">Supported: National Grid electric bills</p>
+        <input type="file" id="fileInput" accept=".pdf" style="display:none">
+      </div>
+
+      <div id="uploadProgress" class="hidden">
+        <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width: 0%"></div></div>
+        <p style="text-align: center; color: var(--text-muted);">
+          <span class="spinner"></span> Extracting bill data...
+        </p>
+      </div>
+
+      <div id="uploadResult" class="hidden"></div>
+    </div>
+  </div>
+
+  <!-- Step 1: Review Extraction -->
+  <div id="step-1" class="step-panel hidden">
+    <div class="card">
+      <h2>Extracted Bill Data</h2>
+      <div class="alert alert-info">Fields below were auto-extracted from your bill. Review for accuracy.</div>
+
+      <h3>Account Information</h3>
+      <div class="data-grid" id="extractionAccount"></div>
+
+      <h3>Usage & Demand</h3>
+      <div class="data-grid" id="extractionUsage"></div>
+
+      <h3>12-Month Usage History</h3>
+      <table class="history-table" id="usageHistoryTable">
+        <thead><tr><th>Month</th><th>kWh</th></tr></thead>
+        <tbody></tbody>
+      </table>
+
+      <h3>Charges</h3>
+      <div class="data-grid" id="extractionCharges"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="goToStep(0)">Back</button>
+        <button class="btn btn-primary" onclick="goToStep(2)">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Building Info -->
+  <div id="step-2" class="step-panel hidden">
+    <div class="card">
+      <h2>Building Information</h2>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Company / Building Name</label>
+          <input type="text" id="company_name" class="auto-filled">
+        </div>
+        <div class="form-group">
+          <label>Address</label>
+          <input type="text" id="company_address" class="auto-filled">
+        </div>
+        <div class="form-group">
+          <label>City</label>
+          <input type="text" id="company_city" class="auto-filled">
+        </div>
+        <div class="form-group">
+          <label>Customer Contact Name</label>
+          <input type="text" id="customer_contact_name">
+        </div>
+        <div class="form-group">
+          <label>Phone</label>
+          <input type="text" id="customer_phone">
+        </div>
+        <div class="form-group">
+          <label>Electric Account #</label>
+          <input type="text" id="electric_account" class="auto-filled">
+        </div>
+        <div class="form-group">
+          <label>Gas Account #</label>
+          <input type="text" id="gas_account">
+        </div>
+        <div class="form-group">
+          <label>Electric PA</label>
+          <input type="text" id="electric_pa" class="auto-filled">
+        </div>
+      </div>
+
+      <h3>Building Energy Profile</h3>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Building Activity Type</label>
+          <select id="building_activity">
+            <option value="">Select...</option>
+            <option value="Education - K through 12">Education - K through 12</option>
+            <option value="Education - College/University">Education - College/University</option>
+            <option value="Office">Office</option>
+            <option value="Retail - Standalone">Retail - Standalone</option>
+            <option value="Healthcare - Outpatient">Healthcare - Outpatient</option>
+            <option value="Healthcare - Inpatient">Healthcare - Inpatient</option>
+            <option value="Lodging">Lodging</option>
+            <option value="Warehouse">Warehouse</option>
+            <option value="Worship">Worship</option>
+            <option value="Assembly">Assembly</option>
+            <option value="Food Service">Food Service</option>
+            <option value="Laboratory">Laboratory</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Non-Electric Heating Fuel</label>
+          <select id="heating_fuel">
+            <option value="">Select...</option>
+            <option value="Natural Gas">Natural Gas</option>
+            <option value="#2 Oil">#2 Oil</option>
+            <option value="Propane">Propane</option>
+            <option value="Electric">Electric</option>
+            <option value="None">None</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Total Building Area (sqft)</label>
+          <input type="number" id="total_building_sqft">
+        </div>
+        <div class="form-group">
+          <label>Annual Electric Usage (kWh)</label>
+          <input type="number" id="annual_electric_kwh" class="auto-filled">
+        </div>
+        <div class="form-group">
+          <label>Annual Fuel Usage</label>
+          <input type="number" id="annual_fuel_usage">
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="goToStep(1)">Back</button>
+        <button class="btn btn-primary" onclick="goToStep(3)">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Project Details -->
+  <div id="step-3" class="step-panel hidden">
+    <div class="card">
+      <h2>Project Details</h2>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Project Type</label>
+          <select id="project_type">
+            <option value="">Select...</option>
+            <option value="Installation of New BMS">Installation of New BMS</option>
+            <option value="Add-On or Optimization of Sequences on Existing BMS">Add-On or Optimization of Sequences</option>
+            <option value="Subscription Based Control">Subscription Based Control</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Demand Response Curtailment</label>
+          <select id="demand_response_curtailment">
+            <option value="No">No</option>
+            <option value="Yes">Yes</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>BMS Manufacturer</label>
+          <input type="text" id="bms_manufacturer">
+        </div>
+        <div class="form-group">
+          <label>BMS Product Type</label>
+          <input type="text" id="bms_product_type">
+        </div>
+        <div class="form-group">
+          <label>Total Proposed Project Cost ($)</label>
+          <input type="number" id="total_project_cost" step="0.01">
+        </div>
+        <div class="form-group full-width">
+          <label>Notes</label>
+          <textarea id="notes" rows="3" style="padding:0.5rem 0.75rem;border:1px solid var(--border);border-radius:6px;font-size:0.95rem;background:var(--input-fill);"></textarea>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="goToStep(2)">Back</button>
+        <button class="btn btn-primary" onclick="goToStep(4)">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 4: Affected Areas -->
+  <div id="step-4" class="step-panel hidden">
+    <div class="card">
+      <h2>Affected Areas & Sequences of Operation</h2>
+      <p style="color: var(--text-muted); margin-bottom: 1rem;">Define up to 5 affected building areas and select sequences of operation for each.</p>
+
+      <div class="area-tabs" id="areaTabs">
+        <button class="area-tab active" data-area="0">Area 1</button>
+        <button class="area-tab" data-area="1">Area 2</button>
+        <button class="area-tab" data-area="2">Area 3</button>
+        <button class="area-tab" data-area="3">Area 4</button>
+        <button class="area-tab" data-area="4">Area 5</button>
+      </div>
+
+      <div id="areaForms"></div>
+
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="goToStep(3)">Back</button>
+        <button class="btn btn-primary" onclick="goToStep(5)">Review & Generate</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 5: Review & Generate -->
+  <div id="step-5" class="step-panel hidden">
+    <div class="card">
+      <h2>Review & Generate Calculator</h2>
+
+      <div id="summaryContent"></div>
+
+      <div class="summary-highlight">
+        <div class="label">Estimated Incentive</div>
+        <div class="amount" id="incentiveEstimate">—</div>
+        <div class="label" id="incentiveCap" style="font-size:0.8rem;"></div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-outline" onclick="goToStep(4)">Back</button>
+        <button class="btn btn-success" id="generateBtn" onclick="generateExcel()">
+          Generate BMS Calculator Excel
+        </button>
+      </div>
+
+      <div id="generateResult" class="hidden" style="margin-top: 1rem;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_BASE = window.location.origin;
+
+// State
+let currentStep = 0;
+let extractionData = null;
+let calculatorInput = {};
+let areas = [
+  { area_number: 1, project_affected_sqft: null, area_description: '', ventilation_type: '', primary_heating: '', primary_cooling: '', terminal_units: '',
+    seq_system_schedules: 0, seq_optimal_start_stop: 0, seq_reset_chilled_water: 0, seq_reset_static_pressure: 0,
+    seq_reset_boiler_water: 0, seq_demand_control_ventilation: 0, seq_economizer_control: 0, seq_reset_supply_air_temp: 0, seq_reset_condenser_water: 0 },
+];
+let activeAreaIdx = 0;
+
+// Health Check
+async function checkHealth() {
+  try {
+    const resp = await fetch(`${API_BASE}/health`);
+    const data = await resp.json();
+    document.getElementById('statusDot').classList.remove('offline');
+    document.getElementById('statusText').textContent = 'Service Online';
+  } catch {
+    document.getElementById('statusDot').classList.add('offline');
+    document.getElementById('statusText').textContent = 'Service Offline';
+  }
+}
+checkHealth();
+setInterval(checkHealth, 30000);
+
+// Navigation
+function goToStep(step) {
+  // Save current form data before navigating
+  if (currentStep === 2) saveFormData();
+  if (currentStep === 3) saveProjectData();
+  if (currentStep === 4) saveAreaData();
+
+  document.querySelectorAll('.step-panel').forEach(p => p.classList.add('hidden'));
+  document.getElementById(`step-${step}`).classList.remove('hidden');
+
+  document.querySelectorAll('.wizard-nav button').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.wizard-nav button[data-step="${step}"]`).classList.add('active');
+
+  // Enable all steps up to current
+  document.querySelectorAll('.wizard-nav button').forEach(b => {
+    if (parseInt(b.dataset.step) <= step) b.disabled = false;
+  });
+
+  currentStep = step;
+
+  if (step === 4) renderAreaForm();
+  if (step === 5) renderSummary();
+}
+
+// File Upload
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+
+uploadZone.addEventListener('click', () => fileInput.click());
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) handleUpload(file);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) handleUpload(e.target.files[0]);
+});
+
+async function handleUpload(file) {
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    showAlert('uploadResult', 'error', 'Please upload a PDF file.');
+    return;
+  }
+
+  document.getElementById('uploadProgress').classList.remove('hidden');
+  document.getElementById('uploadResult').classList.add('hidden');
+  uploadZone.classList.add('hidden');
+
+  const progressFill = document.getElementById('progressFill');
+  progressFill.style.width = '30%';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    progressFill.style.width = '60%';
+    const resp = await fetch(`${API_BASE}/extract-and-merge`, { method: 'POST', body: formData });
+    progressFill.style.width = '90%';
+    const data = await resp.json();
+    progressFill.style.width = '100%';
+
+    if (data.success) {
+      extractionData = data.extraction.data;
+      calculatorInput = data.calculator_input || {};
+
+      showAlert('uploadResult', 'success',
+        `✓ Successfully extracted data from <strong>${file.name}</strong><br>` +
+        `Detected: <strong>${extractionData.utility_sponsor}</strong> | ` +
+        `Account: <strong>${extractionData.account_number}</strong> | ` +
+        `Usage: <strong>${Number(extractionData.total_energy_kwh).toLocaleString()} kWh</strong>`
+      );
+
+      populateExtractionReview();
+      populateFormFields();
+
+      // Enable next step
+      setTimeout(() => goToStep(1), 1500);
+    } else {
+      const errors = data.extraction?.errors?.join(', ') || 'Unknown error';
+      showAlert('uploadResult', 'error', `Extraction failed: ${errors}`);
+      uploadZone.classList.remove('hidden');
+    }
+  } catch (err) {
+    showAlert('uploadResult', 'error', `Connection error: ${err.message}. Is the server running?`);
+    uploadZone.classList.remove('hidden');
+  }
+
+  document.getElementById('uploadProgress').classList.add('hidden');
+}
+
+function populateExtractionReview() {
+  const d = extractionData;
+
+  setDataGrid('extractionAccount', [
+    ['Customer', d.customer_name],
+    ['Account #', d.account_number],
+    ['Service Address', `${d.service_address || ''}, ${d.service_city || ''} ${d.service_state || ''} ${d.service_zip || ''}`],
+    ['Meter #', d.meter_number],
+    ['Rate Type', d.rate_type],
+    ['Billing Period', `${d.billing_period_start} — ${d.billing_period_end}`],
+    ['Supplier', d.supplier_name],
+  ]);
+
+  setDataGrid('extractionUsage', [
+    ['Total Energy', `${Number(d.total_energy_kwh).toLocaleString()} kWh`],
+    ['Peak Demand (kW)', d.demand_kw?.peak ? `${d.demand_kw.peak} kW` : '—'],
+    ['Off-Peak Demand (kW)', d.demand_kw?.off_peak ? `${d.demand_kw.off_peak} kW` : '—'],
+    ['Annual Usage (12mo)', d.annual_usage_kwh ? `${Number(d.annual_usage_kwh).toLocaleString()} kWh` : '—'],
+    ['Billed Demand Range', d.billed_demand_min ? `${d.billed_demand_min} — ${d.billed_demand_max} kW` : '—'],
+  ]);
+
+  const tbody = document.querySelector('#usageHistoryTable tbody');
+  tbody.innerHTML = '';
+  (d.monthly_usage_history || []).forEach(m => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${m.month}</td><td>${Number(m.kwh).toLocaleString()}</td>`;
+    tbody.appendChild(tr);
+  });
+
+  setDataGrid('extractionCharges', [
+    ['Delivery Charges', d.total_delivery_charges ? `$${Number(d.total_delivery_charges).toLocaleString()}` : '—'],
+    ['Supply Charges', d.total_supply_charges ? `$${Number(d.total_supply_charges).toLocaleString()}` : '—'],
+    ['Other Charges', d.total_other_charges ? `$${Number(d.total_other_charges).toLocaleString()}` : '—'],
+  ]);
+}
+
+function populateFormFields() {
+  const c = calculatorInput;
+  setVal('company_name', c.company_name);
+  setVal('company_address', c.company_address);
+  setVal('company_city', c.company_city);
+  setVal('electric_account', c.electric_account);
+  setVal('electric_pa', c.electric_pa);
+  setVal('annual_electric_kwh', c.annual_electric_kwh);
+}
+
+function saveFormData() {
+  const fields = ['company_name', 'company_address', 'company_city', 'customer_contact_name',
+    'customer_phone', 'electric_account', 'gas_account', 'electric_pa',
+    'building_activity', 'heating_fuel', 'total_building_sqft', 'annual_electric_kwh', 'annual_fuel_usage'];
+  fields.forEach(f => {
+    const el = document.getElementById(f);
+    if (el) calculatorInput[f] = el.value || null;
+  });
+}
+
+function saveProjectData() {
+  const fields = ['project_type', 'demand_response_curtailment', 'bms_manufacturer', 'bms_product_type', 'total_project_cost', 'notes'];
+  fields.forEach(f => {
+    const el = document.getElementById(f);
+    if (el) calculatorInput[f] = el.value || null;
+  });
+  if (calculatorInput.total_project_cost) calculatorInput.total_project_cost = parseFloat(calculatorInput.total_project_cost);
+}
+
+// Area Management
+function renderAreaForm() {
+  const container = document.getElementById('areaForms');
+  const area = areas[activeAreaIdx] || areas[0];
+
+  container.innerHTML = `
+    <div class="form-grid" style="margin-bottom: 1rem;">
+      <div class="form-group">
+        <label>Affected Area (sqft)</label>
+        <input type="number" id="area_sqft" value="${area.project_affected_sqft || ''}">
+      </div>
+      <div class="form-group">
+        <label>Area Description</label>
+        <input type="text" id="area_desc" value="${area.area_description || ''}" placeholder="e.g., Main Building Wing A">
+      </div>
+      <div class="form-group">
+        <label>Ventilation System</label>
+        <select id="area_vent">
+          <option value="">Select...</option>
+          <option value="CV Air Handler" ${area.ventilation_type==='CV Air Handler'?'selected':''}>CV Air Handler</option>
+          <option value="CV DOAS" ${area.ventilation_type==='CV DOAS'?'selected':''}>CV DOAS</option>
+          <option value="VAV AHU" ${area.ventilation_type==='VAV AHU'?'selected':''}>VAV AHU</option>
+          <option value="VAV DOAS" ${area.ventilation_type==='VAV DOAS'?'selected':''}>VAV DOAS</option>
+          <option value="N/A or Not Controlled in Project" ${area.ventilation_type==='N/A or Not Controlled in Project'?'selected':''}>N/A</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Primary Heating</label>
+        <select id="area_heat">
+          <option value="">Select...</option>
+          <option value="Condensing Boiler" ${area.primary_heating==='Condensing Boiler'?'selected':''}>Condensing Boiler</option>
+          <option value="Standard Boiler" ${area.primary_heating==='Standard Boiler'?'selected':''}>Standard Boiler</option>
+          <option value="Furnace" ${area.primary_heating==='Furnace'?'selected':''}>Furnace</option>
+          <option value="Air Source Heat Pump" ${area.primary_heating==='Air Source Heat Pump'?'selected':''}>Air Source Heat Pump</option>
+          <option value="VRF or VRV System" ${area.primary_heating==='VRF or VRV System'?'selected':''}>VRF/VRV System</option>
+          <option value="N/A or Not Controlled in Project" ${area.primary_heating==='N/A or Not Controlled in Project'?'selected':''}>N/A</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Primary Cooling</label>
+        <select id="area_cool">
+          <option value="">Select...</option>
+          <option value="Direct Expansion (AC, ASHP, VRF, GSHP, AWHP)" ${area.primary_cooling==='Direct Expansion (AC, ASHP, VRF, GSHP, AWHP)'?'selected':''}>Direct Expansion</option>
+          <option value="Chiller" ${area.primary_cooling==='Chiller'?'selected':''}>Chiller</option>
+          <option value="N/A or Not Controlled in Project" ${area.primary_cooling==='N/A or Not Controlled in Project'?'selected':''}>N/A</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Terminal Units</label>
+        <select id="area_terminal">
+          <option value="">Select...</option>
+          <option value="VAV Box" ${area.terminal_units==='VAV Box'?'selected':''}>VAV Box</option>
+          <option value="Fan Coil Unit (FCU)" ${area.terminal_units==='Fan Coil Unit (FCU)'?'selected':''}>Fan Coil Unit (FCU)</option>
+          <option value="Unit Ventilator" ${area.terminal_units==='Unit Ventilator'?'selected':''}>Unit Ventilator</option>
+          <option value="PTAC" ${area.terminal_units==='PTAC'?'selected':''}>PTAC</option>
+          <option value="N/A or Not Controlled in Project" ${area.terminal_units==='N/A or Not Controlled in Project'?'selected':''}>N/A</option>
+        </select>
+      </div>
+    </div>
+
+    <h3>Sequences of Operation</h3>
+    <div class="sequence-grid">
+      ${sequenceCheckbox('seq_system_schedules', 'System Schedules', area)}
+      ${sequenceCheckbox('seq_optimal_start_stop', 'Optimal Start/Stop', area)}
+      ${sequenceCheckbox('seq_reset_chilled_water', 'Reset Chilled Water Temp', area)}
+      ${sequenceCheckbox('seq_reset_static_pressure', 'Reset Static Pressure', area)}
+      ${sequenceCheckbox('seq_reset_boiler_water', 'Reset Boiler Water Temp', area)}
+      ${sequenceCheckbox('seq_demand_control_ventilation', 'Demand Control Ventilation', area)}
+      ${sequenceCheckbox('seq_economizer_control', 'Economizer Control', area)}
+      ${sequenceCheckbox('seq_reset_supply_air_temp', 'Reset Supply Air Temp', area)}
+      ${sequenceCheckbox('seq_reset_condenser_water', 'Reset Condenser Water Temp', area)}
+    </div>
+  `;
+
+  // Tab events
+  document.querySelectorAll('.area-tab').forEach(tab => {
+    tab.classList.remove('active');
+    if (parseInt(tab.dataset.area) === activeAreaIdx) tab.classList.add('active');
+    tab.onclick = () => {
+      saveAreaData();
+      activeAreaIdx = parseInt(tab.dataset.area);
+      // Ensure area exists
+      while (areas.length <= activeAreaIdx) {
+        areas.push({
+          area_number: areas.length + 1, project_affected_sqft: null, area_description: '',
+          ventilation_type: '', primary_heating: '', primary_cooling: '', terminal_units: '',
+          seq_system_schedules: 0, seq_optimal_start_stop: 0, seq_reset_chilled_water: 0,
+          seq_reset_static_pressure: 0, seq_reset_boiler_water: 0, seq_demand_control_ventilation: 0,
+          seq_economizer_control: 0, seq_reset_supply_air_temp: 0, seq_reset_condenser_water: 0,
+        });
+      }
+      renderAreaForm();
+    };
+  });
+}
+
+function sequenceCheckbox(field, label, area) {
+  const checked = area[field] ? 'checked' : '';
+  return `<div class="sequence-item"><input type="checkbox" id="${field}" ${checked}><label for="${field}">${label}</label></div>`;
+}
+
+function saveAreaData() {
+  if (!areas[activeAreaIdx]) return;
+  const a = areas[activeAreaIdx];
+  const sqftEl = document.getElementById('area_sqft');
+  if (sqftEl) a.project_affected_sqft = parseFloat(sqftEl.value) || null;
+  const descEl = document.getElementById('area_desc');
+  if (descEl) a.area_description = descEl.value;
+  const ventEl = document.getElementById('area_vent');
+  if (ventEl) a.ventilation_type = ventEl.value;
+  const heatEl = document.getElementById('area_heat');
+  if (heatEl) a.primary_heating = heatEl.value;
+  const coolEl = document.getElementById('area_cool');
+  if (coolEl) a.primary_cooling = coolEl.value;
+  const termEl = document.getElementById('area_terminal');
+  if (termEl) a.terminal_units = termEl.value;
+
+  const seqs = ['seq_system_schedules','seq_optimal_start_stop','seq_reset_chilled_water',
+    'seq_reset_static_pressure','seq_reset_boiler_water','seq_demand_control_ventilation',
+    'seq_economizer_control','seq_reset_supply_air_temp','seq_reset_condenser_water'];
+  seqs.forEach(s => {
+    const el = document.getElementById(s);
+    if (el) a[s] = el.checked ? 1 : 0;
+  });
+}
+
+// Summary & Generate
+function renderSummary() {
+  saveFormData();
+  saveProjectData();
+  saveAreaData();
+
+  const c = calculatorInput;
+  const activeAreas = areas.filter(a => a.project_affected_sqft && a.project_affected_sqft > 0);
+
+  let html = `
+    <h3>Company & Building</h3>
+    <div class="data-grid">
+      ${summaryItem('Company', c.company_name)}
+      ${summaryItem('Address', c.company_address)}
+      ${summaryItem('Electric Account', c.electric_account)}
+      ${summaryItem('Building Type', c.building_activity)}
+      ${summaryItem('Building Size', c.total_building_sqft ? `${Number(c.total_building_sqft).toLocaleString()} sqft` : '—')}
+      ${summaryItem('Annual Electric', c.annual_electric_kwh ? `${Number(c.annual_electric_kwh).toLocaleString()} kWh` : '—')}
+    </div>
+    <h3>Project</h3>
+    <div class="data-grid">
+      ${summaryItem('Project Type', c.project_type)}
+      ${summaryItem('BMS Manufacturer', c.bms_manufacturer)}
+      ${summaryItem('Project Cost', c.total_project_cost ? `$${Number(c.total_project_cost).toLocaleString()}` : '—')}
+    </div>
+    <h3>Affected Areas (${activeAreas.length})</h3>
+  `;
+
+  activeAreas.forEach(a => {
+    const seqCount = [a.seq_system_schedules, a.seq_optimal_start_stop, a.seq_reset_chilled_water,
+      a.seq_reset_static_pressure, a.seq_reset_boiler_water, a.seq_demand_control_ventilation,
+      a.seq_economizer_control, a.seq_reset_supply_air_temp, a.seq_reset_condenser_water].filter(Boolean).length;
+    html += `<div class="data-grid">
+      ${summaryItem(`Area ${a.area_number}`, `${Number(a.project_affected_sqft).toLocaleString()} sqft — ${seqCount} sequences`)}
+    </div>`;
+  });
+
+  document.getElementById('summaryContent').innerHTML = html;
+
+  // Estimate incentive
+  const rates = { 'Installation of New BMS': 0.10, 'Add-On or Optimization of Sequences on Existing BMS': 0.05, 'Subscription Based Control': 0.01 };
+  const rate = rates[c.project_type] || 0;
+  let total = 0;
+  activeAreas.forEach(a => {
+    const seqs = [a.seq_system_schedules, a.seq_optimal_start_stop, a.seq_reset_chilled_water,
+      a.seq_reset_static_pressure, a.seq_reset_boiler_water, a.seq_demand_control_ventilation,
+      a.seq_economizer_control, a.seq_reset_supply_air_temp, a.seq_reset_condenser_water].filter(Boolean).length;
+    total += rate * seqs * (a.project_affected_sqft || 0);
+  });
+
+  const cost = parseFloat(c.total_project_cost) || 0;
+  const cap = cost * 0.60;
+  const capped = cost > 0 ? Math.min(total, cap) : total;
+
+  document.getElementById('incentiveEstimate').textContent = `$${capped.toLocaleString(undefined, {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+  if (cost > 0 && total > cap) {
+    document.getElementById('incentiveCap').textContent = `Capped at 60% of project cost ($${cap.toLocaleString()}). Uncapped: $${total.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
+  }
+}
+
+async function generateExcel() {
+  const btn = document.getElementById('generateBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Generating...';
+
+  saveFormData();
+  saveProjectData();
+  saveAreaData();
+
+  const activeAreas = areas.filter(a => a.project_affected_sqft && a.project_affected_sqft > 0);
+  const payload = { ...calculatorInput, affected_areas: activeAreas };
+
+  // Convert numeric strings
+  if (payload.total_building_sqft) payload.total_building_sqft = parseFloat(payload.total_building_sqft);
+  if (payload.annual_electric_kwh) payload.annual_electric_kwh = parseFloat(payload.annual_electric_kwh);
+  if (payload.total_project_cost) payload.total_project_cost = parseFloat(payload.total_project_cost);
+
+  try {
+    const resp = await fetch(`${API_BASE}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+
+    if (data.success) {
+      document.getElementById('generateResult').classList.remove('hidden');
+      document.getElementById('generateResult').innerHTML = `
+        <div class="alert alert-success">
+          ✓ BMS Calculator Excel generated successfully!<br>
+          Estimated Incentive: <strong>$${Number(data.incentive_estimate).toLocaleString()}</strong>
+        </div>
+        <div class="btn-row">
+          <a href="${API_BASE}${data.download_url}" class="btn btn-success" download>
+            Download Excel File
+          </a>
+        </div>
+      `;
+    } else {
+      showAlert('generateResult', 'error', `Generation failed: ${data.errors?.join(', ')}`);
+    }
+  } catch (err) {
+    showAlert('generateResult', 'error', `Connection error: ${err.message}`);
+  }
+
+  btn.disabled = false;
+  btn.textContent = 'Generate BMS Calculator Excel';
+}
+
+// Helpers
+function setVal(id, val) {
+  const el = document.getElementById(id);
+  if (el && val) el.value = val;
+}
+
+function setDataGrid(id, items) {
+  const el = document.getElementById(id);
+  el.innerHTML = items.map(([label, value]) =>
+    `<div class="data-item"><span class="label">${label}</span><span class="value">${value || '—'}</span></div>`
+  ).join('');
+}
+
+function summaryItem(label, value) {
+  return `<div class="data-item"><span class="label">${label}</span><span class="value">${value || '—'}</span></div>`;
+}
+
+function showAlert(containerId, type, message) {
+  const el = document.getElementById(containerId);
+  el.classList.remove('hidden');
+  el.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+}
+
+// ── Admin Panel ──────────────────────────────────────────────
+async function openAdminPanel() {
+  document.getElementById('adminModal').style.display = 'flex';
+  // Load template info and parser list in parallel
+  loadTemplateInfo();
+  loadParserList();
+}
+
+function closeAdminPanel() {
+  document.getElementById('adminModal').style.display = 'none';
+}
+
+async function loadTemplateInfo() {
+  const el = document.getElementById('templateInfo');
+  try {
+    const res = await fetch('/admin/template');
+    const info = await res.json();
+    if (info.has_template) {
+      const sizeMB = (info.size_bytes / 1024 / 1024).toFixed(2);
+      const modified = new Date(info.modified * 1000).toLocaleDateString();
+      el.innerHTML = `
+        <div style="display:grid; gap:0.3rem;">
+          <div><strong>File:</strong> ${info.filename}</div>
+          <div><strong>Size:</strong> ${sizeMB} MB</div>
+          <div><strong>Last Modified:</strong> ${modified}</div>
+          <div style="color:var(--success); font-weight:600;">&#10003; Template loaded</div>
+        </div>`;
+    } else {
+      el.innerHTML = '<div style="color:var(--error); font-weight:600;">&#10007; No template found — please upload one</div>';
+    }
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--error);">Failed to load template info</div>';
+  }
+}
+
+async function loadParserList() {
+  const el = document.getElementById('parserList');
+  try {
+    const res = await fetch('/admin/parsers');
+    const data = await res.json();
+    el.innerHTML = data.parsers.map(p =>
+      `<div style="padding:0.4rem 0; border-bottom:1px solid var(--border);">
+        <strong>${p.name}</strong> <span style="color:var(--text-muted); font-size:0.85rem;">(${p.type})</span>
+      </div>`
+    ).join('');
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--error);">Failed to load parser list</div>';
+  }
+}
+
+async function uploadTemplate() {
+  const fileInput = document.getElementById('templateFile');
+  const resultEl = document.getElementById('templateUploadResult');
+
+  if (!fileInput.files.length) {
+    resultEl.classList.remove('hidden');
+    resultEl.innerHTML = '<div class="alert alert-warning">Please select an .xlsx file first</div>';
+    return;
+  }
+
+  const file = fileInput.files[0];
+  if (!file.name.toLowerCase().endsWith('.xlsx')) {
+    resultEl.classList.remove('hidden');
+    resultEl.innerHTML = '<div class="alert alert-error">Only .xlsx files are accepted</div>';
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/admin/template', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (data.success) {
+      resultEl.classList.remove('hidden');
+      resultEl.innerHTML = `<div class="alert alert-success">Template updated: ${data.filename} (${(data.size_bytes/1024).toFixed(0)} KB)${data.archived_previous ? ' — previous version archived' : ''}</div>`;
+      loadTemplateInfo();
+    } else {
+      resultEl.classList.remove('hidden');
+      resultEl.innerHTML = `<div class="alert alert-error">Upload failed: ${data.error || 'Unknown error'}</div>`;
+    }
+  } catch (e) {
+    resultEl.classList.remove('hidden');
+    resultEl.innerHTML = `<div class="alert alert-error">Connection error: ${e.message}</div>`;
+  }
+}
+
+// Close modal on backdrop click
+document.getElementById('adminModal').addEventListener('click', function(e) {
+  if (e.target === this) closeAdminPanel();
+});
+</script>
+</body>
+</html>

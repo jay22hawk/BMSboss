@@ -140,6 +140,14 @@ class ExtractedBillData:
     service_state: Optional[str] = None
     service_zip: Optional[str] = None
     customer_name: Optional[str] = None
+    customer_care_of: Optional[str] = None       # e.g., "%SUPERINTENDANT OF SCHOOLS"
+
+    # Mailing Address (from payment return section)
+    mailing_name: Optional[str] = None
+    mailing_address: Optional[str] = None
+    mailing_city: Optional[str] = None
+    mailing_state: Optional[str] = None
+    mailing_zip: Optional[str] = None
 
     # Billing Period
     billing_period_start: Optional[str] = None
@@ -177,9 +185,15 @@ class ExtractedBillData:
     total_other_charges: Optional[float] = None
     amount_due: Optional[float] = None
 
-    # Supplier Info
+    # Supply Info
     supplier_name: Optional[str] = None
     supplier_account: Optional[str] = None
+    supplier_phone: Optional[str] = None
+    supplier_address: Optional[str] = None
+    electricity_supply_rate: Optional[float] = None  # $/kWh
+
+    # Delivery Charge Line Items
+    delivery_line_items: List[Dict] = field(default_factory=list)  # [{name, rate, quantity, unit, amount}]
 
 
 # ─── BMS Calculator Input ────────────────────────────────────────────────────
